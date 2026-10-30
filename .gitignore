@@ -1,0 +1,17 @@
+# Yocto build artifacts
+build/
+tmp/
+cache/
+sstate-cache/
+downloads/
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
