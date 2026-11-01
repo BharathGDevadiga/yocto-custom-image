@@ -18,3 +18,7 @@ Thumbs.db
 
 # Release binaries
 release-artifacts/
+
+# Disk compaction utilities
+compact-disk.bat
+compact_script.txt
