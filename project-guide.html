@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Yocto Custom Embedded Linux Project Guide</title>
+<style>
+  @page {
+    size: A4;
+    margin: 16mm 18mm;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1e293b;
+    line-height: 1.55;
+    font-size: 13px;
+    margin: 0;
+    padding: 0;
+  }
+  h1 {
+    font-size: 24px;
+    color: #0f172a;
+    border-bottom: 2px solid #2563eb;
+    padding-bottom: 8px;
+    margin-top: 0;
+  }
+  h2 {
+    font-size: 17px;
+    color: #1e3a8a;
+    border-bottom: 1px solid #cbd5e1;
+    padding-bottom: 5px;
+    margin-top: 22px;
+    margin-bottom: 10px;
+    page-break-after: avoid;
+  }
+  h3 {
+    font-size: 14px;
+    color: #1d4ed8;
+    margin-top: 14px;
+    margin-bottom: 6px;
+    page-break-after: avoid;
+  }
+  p, li {
+    font-size: 12.5px;
+    color: #334155;
+  }
+  ul, ol {
+    margin-top: 4px;
+    margin-bottom: 10px;
+    padding-left: 22px;
+  }
+  li {
+    margin-bottom: 4px;
+  }
+  code {
+    font-family: "Cascadia Code", Consolas, Monaco, monospace;
+    background-color: #f1f5f9;
+    color: #0f172a;
+    padding: 2px 5px;
+    border-radius: 4px;
+    font-size: 11.5px;
+  }
+  pre {
+    font-family: "Cascadia Code", Consolas, Monaco, monospace;
+    background-color: #0f172a;
+    color: #f8fafc;
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 11px;
+    line-height: 1.45;
+    overflow-x: auto;
+    margin: 8px 0 12px 0;
+    page-break-inside: avoid;
+  }
+  pre code {
+    background-color: transparent;
+    color: inherit;
+    padding: 0;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0 14px 0;
+    font-size: 12px;
+    page-break-inside: avoid;
+  }
+  th, td {
+    border: 1px solid #cbd5e1;
+    padding: 7px 10px;
+    text-align: left;
+  }
+  th {
+    background-color: #f8fafc;
+    color: #0f172a;
+    font-weight: 600;
+  }
+  tr:nth-child(even) td {
+    background-color: #fbfcfe;
+  }
+  .badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    background-color: #dbeafe;
+    color: #1e40af;
+  }
+  .callout {
+    background-color: #eff6ff;
+    border-left: 4px solid #3b82f6;
+    padding: 10px 14px;
+    border-radius: 0 6px 6px 0;
+    margin: 12px 0;
+    page-break-inside: avoid;
+  }
+  .callout-title {
+    font-weight: bold;
+    color: #1e40af;
+    margin-bottom: 4px;
+  }
+  .footer-note {
+    margin-top: 25px;
+    padding-top: 10px;
+    border-top: 1px solid #e2e8f0;
+    font-size: 11px;
+    color: #64748b;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<h1>Yocto Custom Embedded Linux Project Guide</h1>
+<p><strong>Target Architecture:</strong> QEMU x86-64 | <strong>Release:</strong> Poky Scarthgap 5.0 LTS | <strong>Kernel:</strong> Linux 6.6.151</p>
+<p><strong>Author:</strong> Bharath G Devadiga | <strong>Repository:</strong> <a href="https://github.com/BharathGDevadiga/yocto-custom-image">github.com/BharathGDevadiga/yocto-custom-image</a></p>
+
+<h2>1. Executive Summary & Architecture</h2>
+<p>
+This project demonstrates the complete end-to-end design, implementation, and cross-compilation of a custom embedded Linux distribution using the Yocto Project (Poky Scarthgap). The system features an out-of-tree Linux 6.6 character device driver, an embedded telemetry daemon with checksum verification, and a POSIX socket networking suite.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Component</th>
+      <th>Package / Module</th>
+      <th>Key Role & Architecture</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Kernel Driver</strong></td>
+      <td><code>sensor_kmod</code> (6.6)</td>
+      <td>Exposes <code>/dev/bharath_sensor</code>; streams 64-bit jiffies, temp (m°C), and pressure (Pa).</td>
+    </tr>
+    <tr>
+      <td><strong>User-space App</strong></td>
+      <td><code>sensor-simulator</code></td>
+      <td>Reads binary struct from <code>/dev/bharath_sensor</code> and computes Fletcher-16 checksums.</td>
+    </tr>
+    <tr>
+      <td><strong>Network Suite</strong></td>
+      <td><code>netcomm</code></td>
+      <td>POSIX TCP/UDP client-server binaries verifying Linux socket IPC in QEMU.</td>
+    </tr>
+    <tr>
+      <td><strong>Custom Layer</strong></td>
+      <td><code>meta-bharath</code></td>
+      <td>Contains all layer metadata, kernel recipe, app recipes, and image definition.</td>
+    </tr>
+    <tr>
+      <td><strong>OS Image</strong></td>
+      <td><code>bharath-image</code></td>
+      <td>Minimal production root filesystem (97 MB) with Dropbear SSH and auto-loaded modules.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>2. Step-by-Step Implementation</h2>
+
+<h3>Step 2.1: Authoring the Linux 6.6 Character Device Driver</h3>
+<p>
+The kernel module (<code>sensor_kmod.c</code>) registers a dynamic major number with <code>alloc_chrdev_region()</code> and uses modern Linux 6.4+ API <code>class_create("bharath_class")</code> to automatically instantiate <code>/dev/bharath_sensor</code> via <code>eudev</code>.
+</p>
+<p>When user space reads the device node, the driver packs hardware telemetry and safely transfers it to user space via <code>copy_to_user()</code>:</p>
+<pre><code>struct bharath_sensor_data {
+    u64 timestamp_jiffies; /* get_jiffies_64() */
+    s32 temperature_mC;    /* 20000 mC to 35000 mC */
+    u32 pressure_Pa;       /* 98000 Pa to 104000 Pa */
+} __attribute__((packed));</code></pre>
+
+<h3>Step 2.2: User-Space Telemetry Client with Fletcher-16 Checksum</h3>
+<p>
+The application (<code>sensor-simulator.c</code>) opens <code>/dev/bharath_sensor</code> with <code>O_RDONLY</code> and receives the binary payload directly from kernel memory. It applies a 16-bit Fletcher checksum across the struct buffer to guarantee data integrity before outputting formatted telemetry frames.
+</p>
+
+<h3>Step 2.3: BitBake Recipe Architecture</h3>
+<ul>
+  <li><code>recipes-kernel/sensor-kmod/sensor-kmod_1.0.bb</code>: Inherits <code>module</code> and sets <code>KERNEL_MODULE_AUTOLOAD += "sensor_kmod"</code> to load the driver at boot automatically.</li>
+  <li><code>recipes-apps/sensor-simulator/sensor-simulator_1.0.bb</code>: Cross-compiles the C binary with <code>${CC} ${CFLAGS} ${LDFLAGS}</code> into <code>/usr/bin/</code>.</li>
+  <li><code>recipes-core/images/bharath-image.bb</code>: Inherits <code>core-image</code> and appends <code>sensor-simulator</code>, <code>netcomm</code>, and <code>sensor-kmod</code> to <code>IMAGE_INSTALL</code>.</li>
+</ul>
+
+<h2>3. Running & Verifying in QEMU</h2>
+
+<p>To boot the compiled image headlessly in your Ubuntu terminal:</p>
+<pre><code>cd ~/poky
+source oe-init-build-env build
+runqemu nographic</code></pre>
+
+<p>Log in at the prompt:</p>
+<pre><code>qemux86-64 login: root
+(Press Enter — no password required)</code></pre>
+
+<h3>Live Verification Commands Inside QEMU</h3>
+<pre><code># 1. Verify kernel module is auto-loaded:
+lsmod | grep sensor_kmod
+# Output: sensor_kmod   12288  0
+
+# 2. Verify character device node created by eudev:
+ls -l /dev/bharath_sensor
+# Output: crw-rw-rw- 1 root root 246, 0 /dev/bharath_sensor
+
+# 3. Stream 5 live frames with checksum validation:
+sensor-simulator -n 5</code></pre>
+
+<div class="callout">
+  <div class="callout-title">Verified Live Output Captured in QEMU:</div>
+  <code>[2026-11-01 13:27:34] [JIFFIES=4294739672] KERNEL_SENSOR: TEMP=22.07°C | PRESS=1004.17 hPa | CHECKSUM=0xBAB9 (VALID)</code><br>
+  <code>[2026-11-01 13:27:36] [JIFFIES=4294741707] KERNEL_SENSOR: TEMP=28.16°C | PRESS=1025.39 hPa | CHECKSUM=0x04E3 (VALID)</code>
+</div>
+
+<h2>4. The Proper Command to Exit QEMU</h2>
+<div class="callout" style="border-left-color: #10b981; background-color: #f0fdf4;">
+  <div class="callout-title" style="color: #065f46;">No Keyboard Shortcuts Needed — Use the Standard Power Command:</div>
+  <p>While inside QEMU at the <code>root@qemux86-64:~#</code> prompt, simply type:</p>
+  <pre style="background-color: #064e3b; margin-bottom: 0;"><code>poweroff</code></pre>
+</div>
+<p>
+This initiates an ACPI shutdown sequence: services are stopped, disk filesystems unmount cleanly, and QEMU terminates, returning you immediately to your Ubuntu terminal prompt.
+</p>
+
+<h2>5. How to Close WSL Completely</h2>
+<p>Follow these two clean steps to shut down WSL when you are finished:</p>
+
+<ol>
+  <li><strong>Close the Ubuntu Terminal:</strong>
+    <p>In your Ubuntu terminal prompt, simply type:</p>
+    <pre><code>exit</code></pre>
+  </li>
+  <li><strong>Shut Down WSL Engine from Windows PowerShell:</strong>
+    <p>Open Windows PowerShell and run:</p>
+    <pre><code>wsl --shutdown</code></pre>
+    <p>This completely stops all WSL virtual machine processes and releases all memory back to Windows.</p>
+  </li>
+</ol>
+
+<h2>6. Reclaiming 50+ GB on Your Laptop (Optional)</h2>
+<p>Once your release binaries are backed up in <code>C:\Users\devad\Downloads\yocto-custom-image\release-artifacts</code>, reclaim your disk space:</p>
+
+<ol>
+  <li><strong>Clean Build Cache in Ubuntu:</strong>
+    <pre><code>rm -rf ~/poky/build/tmp ~/poky/build/sstate-cache ~/poky/build/downloads
+sudo fstrim -av</code></pre>
+  </li>
+  <li><strong>Compact Virtual Disk in PowerShell (as Administrator):</strong>
+    <pre><code>wsl --shutdown
+diskpart</code></pre>
+    <p>Inside <code>DISKPART&gt;</code>:</p>
+    <pre><code>select vdisk file="C:\Users\devad\AppData\Local\wsl\{6e45fa15-718f-4712-ac74-a32d3e3ecc4b}\ext4.vhdx"
+attach vdisk readonly
+compact vdisk
+detach vdisk
+exit</code></pre>
+  </li>
+</ol>
+
+<div class="footer-note">
+  Yocto Custom Image & Kernel Driver Project &bull; Document generated for Bharath G Devadiga &bull; November 2026
+</div>
+
+</body>
+</html>
