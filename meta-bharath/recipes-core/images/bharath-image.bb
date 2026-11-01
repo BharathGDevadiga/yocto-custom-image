@@ -1,15 +1,15 @@
 # bharath-image.bb
 #
 # Custom image based on core-image-minimal that includes
-# the sensor-simulator and netcomm packages from meta-bharath.
+# sensor-simulator, netcomm, and the sensor-kmod kernel driver.
 
-SUMMARY = "Bharath's custom Yocto image with sensor simulator and networking tools"
+SUMMARY = "Bharath's custom Yocto image with kernel sensor driver and networking tools"
 
 # Inherit from core-image so we get the standard image framework
 inherit core-image
 
-# Start from core-image-minimal's package set
-IMAGE_INSTALL:append = " sensor-simulator netcomm"
+# Core user-space applications and kernel modules from meta-bharath
+IMAGE_INSTALL:append = " sensor-simulator netcomm sensor-kmod"
 
 # Include SSH server for remote access (useful for QEMU testing)
 IMAGE_FEATURES += "ssh-server-dropbear"
