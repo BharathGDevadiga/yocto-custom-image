@@ -11,14 +11,52 @@ A complete, production-grade Yocto Project build creating an embedded Linux dist
 
 ---
 
+## ⚡ Quick Run (Instant Play without 60 GB Yocto Build)
+
+If you just want to test this custom operating system without compiling from source, you do **not** need to install Yocto or download 60 GB of Poky source code!
+
+You can run the pre-built Linux kernel (`bzImage`) and root filesystem (`bharath-image-qemux86-64.rootfs.ext4`) directly using standalone QEMU in under two minutes:
+
+### 1. Download Release Binaries (~109 MB)
+Download `bzImage` and `bharath-image-qemux86-64.rootfs.ext4` from the **[GitHub Releases (v1.0.0)](https://github.com/BharathGDevadiga/yocto-custom-image/releases/tag/v1.0.0)** page.
+
+### 2. Boot in QEMU with a Single Command
+```bash
+# Option A: Using the automated helper script
+chmod +x run-prebuilt.sh
+./run-prebuilt.sh
+
+# Option B: Direct QEMU invocation (Linux / macOS / WSL)
+qemu-system-x86_64 \
+    -kernel bzImage \
+    -drive file=bharath-image-qemux86-64.rootfs.ext4,if=virtio,format=raw \
+    -append "root=/dev/vda rw console=ttyS0 quiet" \
+    -cpu IvyBridge \
+    -machine q35 \
+    -smp 2 \
+    -m 256 \
+    -nographic
+```
+
+### 3. Log In & Verify
+* When prompted, log in with username: **`root`** (no password required).
+* Verify driver: `lsmod | grep sensor_kmod`
+* Verify device node: `ls -l /dev/bharath_sensor`
+* Run telemetry client: `sensor-simulator -n 5`
+* **Clean Exit:** Simply type **`poweroff`**!
+
+---
+
 ## Project Structure
 
 ```text
 yocto-custom-image/
 ├── README.md
+├── run-prebuilt.sh             # One-click standalone QEMU launcher
 ├── setup-build.sh              # Automated build environment setup
 ├── build-yocto.sh
 ├── .gitignore
+├── Yocto_Embedded_Linux_Project_Guide.pdf  # Comprehensive architecture & walkthrough guide
 └── meta-bharath/               # Custom Yocto layer
     ├── conf/
     │   └── layer.conf          # Layer configuration (scarthgap compatible)
@@ -48,7 +86,7 @@ yocto-custom-image/
 
 ---
 
-## Prerequisites
+## Prerequisites (For Building from Source)
 
 ### System Requirements
 - **OS:** Ubuntu 22.04 or 24.04 (WSL2 or Native)
@@ -68,7 +106,7 @@ sudo locale-gen en_US.UTF-8
 
 ---
 
-## Build Instructions
+## Full Build Instructions from Source
 
 ### Step 1: Clone Poky (Yocto Reference Distribution)
 ```bash
@@ -135,7 +173,7 @@ ls -l /dev/bharath_sensor
 ```
 **Output:**
 ```text
-crw-rw-rw-    1 root     root      246,   0 Nov  1 12:28 /dev/bharath_sensor
+crw-rw-rw-    1 root     root      246,   0 Nov  1 13:26 /dev/bharath_sensor
 ```
 
 ### 3. Test Kernel-to-User Telemetry with Fletcher-16 Checksum
@@ -148,46 +186,21 @@ sensor-simulator -n 5
 Connecting to Character Device: /dev/bharath_sensor
 Interval: 2 sec | Readings: limited
 
-[   51.576841] sensor_kmod: Device /dev/bharath_sensor opened
-[2026-11-01 12:29:26] [JIFFIES=4294718253] KERNEL_SENSOR: TEMP=31.29°C (31294 mC) | PRESS=1039.65 hPa (103965 Pa) | CHECKSUM=0x2ECA (VALID)
-[2026-11-01 12:29:28] [JIFFIES=4294720274] KERNEL_SENSOR: TEMP=33.26°C (33258 mC) | PRESS=981.91 hPa (98191 Pa) | CHECKSUM=0x10C6 (VALID)
-[2026-11-01 12:29:30] [JIFFIES=4294722279] KERNEL_SENSOR: TEMP=21.07°C (21073 mC) | PRESS=1030.67 hPa (103067 Pa) | CHECKSUM=0x29F9 (VALID)
-[2026-11-01 12:29:32] [JIFFIES=4294724283] KERNEL_SENSOR: TEMP=24.26°C (24256 mC) | PRESS=1039.59 hPa (103959 Pa) | CHECKSUM=0xA8D0 (VALID)
-[2026-11-01 12:29:34] [JIFFIES=4294726295] KERNEL_SENSOR: TEMP=21.17°C (21174 mC) | PRESS=1034.47 hPa (103447 Pa) | CHECKSUM=0x349C (VALID)
-[   59.637229] sensor_kmod: Device /dev/bharath_sensor closed
+[  703.469910] sensor_kmod: Device /dev/bharath_sensor opened
+[2026-11-01 13:21:06] [JIFFIES=4295370204] KERNEL_SENSOR: TEMP=28.79°C (28789 mC) | PRESS=1004.17 hPa (100417 Pa) | CHECKSUM=0xBAB9 (VALID)
+[2026-11-01 13:21:08] [JIFFIES=4295372222] KERNEL_SENSOR: TEMP=28.26°C (28261 mC) | PRESS=1025.39 hPa (102539 Pa) | CHECKSUM=0x04E3 (VALID)
+[2026-11-01 13:21:10] [JIFFIES=4295374227] KERNEL_SENSOR: TEMP=32.67°C (32668 mC) | PRESS=1027.68 hPa (102768 Pa) | CHECKSUM=0x91EE (VALID)
+[2026-11-01 13:21:12] [JIFFIES=4295376233] KERNEL_SENSOR: TEMP=23.88°C (23880 mC) | PRESS=1039.14 hPa (103914 Pa) | CHECKSUM=0xCBD4 (VALID)
+[2026-11-01 13:21:14] [JIFFIES=4295378249] KERNEL_SENSOR: TEMP=29.52°C (29517 mC) | PRESS=1000.09 hPa (100009 Pa) | CHECKSUM=0xD287 (VALID)
+[  711.534301] sensor_kmod: Device /dev/bharath_sensor closed
 
 === Sensor Reader Stopped (5 readings completed) ===
 ```
 
-### 4. Test POSIX TCP Networking
+### 4. Clean Shutdown Command
 ```bash
-tcp-server 5000 &
-tcp-client 127.0.0.1 5000
+poweroff
 ```
-**Output:**
-```text
-[TCP-SERVER] Listening on port 5000...
-[TCP-CLIENT] Connected!
-[TCP-CLIENT] Sending: Hello from Yocto TCP client!
-[TCP-SERVER] Received: Hello from Yocto TCP client!
-[TCP-CLIENT] Server replied: [ECHO] Hello from Yocto TCP client!
-```
-
-### 5. Test POSIX UDP Networking
-```bash
-udp-server 5001 &
-udp-client 127.0.0.1 5001
-```
-**Output:**
-```text
-[UDP-SERVER] Listening on port 5001...
-[UDP-CLIENT] Sending to 127.0.0.1:5001
-[UDP-SERVER] From 127.0.0.1:38921 => Hello from Yocto UDP client!
-[UDP-CLIENT] Server replied: [UDP-ECHO] Hello from Yocto UDP client!
-```
-
-### Exit QEMU
-Press **`Ctrl + A`**, release, then press **`x`**.
 
 ---
 
