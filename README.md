@@ -219,6 +219,8 @@ poweroff
 
 ## Technical Architecture & Implementation
 
+![Layered Architecture](docs/images/custom-embedded-linux-architecture-layers.png)
+
 ### 1. `sensor_kmod` (Linux 6.6 Kernel Driver)
 * **Subsystem:** Linux Character Device Subsystem (`cdev`, `fops`).
 * **Compatibility:** Linux 6.6 / modern kernel APIs (`class_create(name)` single-argument form introduced in Linux 6.4).
