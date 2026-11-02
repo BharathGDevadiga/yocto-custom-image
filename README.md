@@ -62,38 +62,63 @@ qemu-system-x86_64 \
 
 ```text
 yocto-custom-image/
-├── README.md
-├── run-prebuilt.sh             # One-click standalone QEMU launcher
-├── setup-build.sh              # Automated build environment setup
-├── build-yocto.sh
-├── .gitignore
-├── Yocto_Embedded_Linux_Project_Guide.pdf  # Comprehensive architecture & walkthrough guide
-└── meta-bharath/               # Custom Yocto layer
+├── README.md                                 # Complete technical documentation & architecture guide
+├── run-prebuilt.sh                           # Standalone headless QEMU launcher (Linux / macOS / WSL)
+├── run-prebuilt-windows.bat                  # 1-Click Windows standalone QEMU launcher
+├── setup-build.sh                            # Automated build environment & Poky setup
+├── build-yocto.sh                            # Automated BitBake compilation trigger
+├── .gitignore                                # Excludes build trees (build/, poky/) to keep repo clean
+├── Yocto_Embedded_Linux_Project_Guide.pdf    # Comprehensive 8-page architecture guide
+├── docs/
+│   └── images/
+│       ├── system-architecture-flowchart.png # High-resolution system architecture flowchart
+│       ├── qemu-runtime-verification.png     # Live terminal boot & telemetry proof screenshot
+│       └── custom-embedded-linux-architecture-layers.png # 4-tier horizontal architecture diagram
+└── meta-bharath/                             # Custom Yocto BSP layer
     ├── conf/
-    │   └── layer.conf          # Layer configuration (scarthgap compatible)
+    │   └── layer.conf                        # Layer configuration (scarthgap compatible)
     ├── recipes-apps/
     │   ├── sensor-simulator/
-    │   │   ├── sensor-simulator_1.0.bb    # User-space BitBake recipe
+    │   │   ├── sensor-simulator_1.0.bb       # User-space BitBake cross-compile recipe
     │   │   └── files/
-    │   │       └── sensor-simulator.c     # Kernel character device reader & Fletcher-16
+    │   │       └── sensor-simulator.c        # Telemetry daemon with ioctl & Fletcher-16 verification
     │   └── netcomm/
-    │       ├── netcomm_1.0.bb             # Network suite BitBake recipe
+    │       ├── netcomm_1.0.bb                # Network suite BitBake recipe
     │       └── files/
-    │           ├── tcp-server.c           # POSIX TCP echo server
-    │           ├── tcp-client.c           # POSIX TCP client
-    │           ├── udp-server.c           # POSIX UDP echo server
-    │           ├── udp-client.c           # POSIX UDP client
-    │           └── Makefile               # Multi-binary Makefile
+    │           ├── tcp-server.c              # POSIX TCP echo server
+    │           ├── tcp-client.c              # POSIX TCP client
+    │           ├── udp-server.c              # POSIX UDP echo server
+    │           ├── udp-client.c              # POSIX UDP client
+    │           └── Makefile                  # Multi-target Makefile for netcomm suite
     ├── recipes-kernel/
     │   └── sensor-kmod/
-    │       ├── sensor-kmod_1.0.bb         # Kernel module recipe (inherits module)
+    │       ├── sensor-kmod_1.0.bb            # Out-of-tree kernel module recipe (autoloading)
     │       └── files/
-    │           ├── sensor_kmod.c          # Linux 6.6 character driver (/dev/bharath_sensor)
-    │           └── Makefile               # Kbuild module Makefile
+    │           ├── sensor_kmod.c             # Linux 6.6 character driver with mutex & ioctl
+    │           └── Makefile                  # Kbuild module Makefile
     └── recipes-core/
         └── images/
-            └── bharath-image.bb           # Custom image recipe
+            └── bharath-image.bb              # Custom image recipe assembling final rootfs (.ext4)
 ```
+
+### Detailed File Inventory & Technical Roles
+
+| File Path | Subsystem / Layer | Technical Role & Implementation |
+| :--- | :--- | :--- |
+| **`recipes-kernel/sensor-kmod/files/sensor_kmod.c`** | Linux 6.6 Kernel Driver | Out-of-tree character device driver exposing `/dev/bharath_sensor`. Implements thread-safe `mutex_lock_interruptible()` locking, `unlocked_ioctl` (`_IO`, `_IOR`, `_IOW`), single-argument `class_create()`, dynamic devnode creation (`0666`), and safe atomic `copy_to_user()` memory transfers. |
+| **`recipes-kernel/sensor-kmod/files/Makefile`** | Kernel Build | Standard Kbuild Makefile utilized by the Linux kernel build system (`obj-m := sensor_kmod.o`) for cross-compiling the `.ko` binary against kernel headers. |
+| **`recipes-kernel/sensor-kmod/sensor-kmod_1.0.bb`** | BitBake Recipe | Inherits `module.bbclass`, compiles out-of-tree kernel modules, sets `KERNEL_MODULE_AUTOLOAD += "sensor_kmod"`, and defines runtime dependencies for eudev auto-probing. |
+| **`recipes-apps/sensor-simulator/files/sensor-simulator.c`** | User-Space Daemon | Embedded C telemetry client. Interfaces with `/dev/bharath_sensor`, sets runtime temperature calibration offsets via `ioctl()`, and computes a 16-bit Fletcher checksum over raw binary frames. |
+| **`recipes-apps/sensor-simulator/sensor-simulator_1.0.bb`** | BitBake Recipe | Application recipe managing cross-compilation with `${CC} ${CFLAGS} ${LDFLAGS}` and staging the compiled binary into `${D}${bindir}/sensor-simulator`. |
+| **`recipes-apps/netcomm/files/tcp-*.c / udp-*.c`** | Network IPC | POSIX socket suite providing TCP/UDP echo servers and clients to test networking, loopback, and inter-process communication in QEMU. |
+| **`recipes-apps/netcomm/netcomm_1.0.bb`** | BitBake Recipe | Packages all four network binaries into the target image rootfs. |
+| **`recipes-core/images/bharath-image.bb`** | Custom OS Image Recipe | Inherits `core-image`, configuring a minimal, headless production rootfs (96 MB) bundled with Dropbear SSH, eudev, kmod, kernel modules, and applications. |
+| **`conf/layer.conf`** | Yocto Layer Configuration | Defines layer priority, compatibility with Yocto release `scarthgap`, and appends recipe search paths (`BBFILES`). |
+| **`run-prebuilt.sh`** | Standalone QEMU Runner | Boots pre-compiled `bzImage` and `.ext4` rootfs in headless QEMU with IvyBridge CPU and dual serial consoles (`console=ttyS0 console=ttyS1`) without needing Yocto installed. |
+| **`run-prebuilt-windows.bat`** | Windows 1-Click Launcher | Automatically detects repo directory and invokes WSL to launch the pre-built QEMU image in 1 click. |
+| **`setup-build.sh`** | Build Automation | Shell script to automate cloning Poky Scarthgap, initializing the BitBake environment, adding `meta-bharath`, and configuring `local.conf`. |
+| **`build-yocto.sh`** | Build Automation | Helper script that initializes the environment and triggers `bitbake bharath-image`. |
+| **`Yocto_Embedded_Linux_Project_Guide.pdf`** | Comprehensive Documentation | Reference manual covering the complete system architecture, driver lifecycle, build instructions, and interview prep. |
 
 ---
 
