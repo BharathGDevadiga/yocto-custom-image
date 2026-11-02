@@ -17,9 +17,17 @@
 #include <linux/uaccess.h>
 #include <linux/jiffies.h>
 #include <linux/random.h>
+#include <linux/mutex.h>
+#include <linux/ioctl.h>
 
 #define DEVICE_NAME "bharath_sensor"
 #define CLASS_NAME  "bharath_class"
+
+/* IOCTL Definitions for Driver Configuration & Control */
+#define BHARATH_SENSOR_MAGIC              'B'
+#define BHARATH_SENSOR_IOCTL_RESET_STATS  _IO(BHARATH_SENSOR_MAGIC, 0)
+#define BHARATH_SENSOR_IOCTL_GET_READINGS _IOR(BHARATH_SENSOR_MAGIC, 1, u32)
+#define BHARATH_SENSOR_IOCTL_SET_CALIB    _IOW(BHARATH_SENSOR_MAGIC, 2, s32)
 
 /* Packed binary struct shared with user-space application */
 struct bharath_sensor_data {
@@ -32,6 +40,13 @@ static dev_t dev_num;
 static struct cdev sensor_cdev;
 static struct class *sensor_class = NULL;
 static struct device *sensor_device = NULL;
+
+/* Mutex for thread-safe access across concurrent reader processes */
+static DEFINE_MUTEX(sensor_mutex);
+
+/* Driver internal state (protected by sensor_mutex) */
+static u32 total_read_count = 0;
+static s32 temp_calib_offset_mC = 0;
 
 static int sensor_open(struct inode *inode, struct file *file)
 {
@@ -91,6 +106,14 @@ static ssize_t sensor_read(struct file *file, char __user *buf, size_t count, lo
         return -EINVAL;
     }
 
+    /*
+     * Acquire mutex lock to ensure thread-safe telemetry sampling
+     * and protect driver statistics from race conditions.
+     * Using mutex_lock_interruptible allows clean abort if interrupted by signals.
+     */
+    if (mutex_lock_interruptible(&sensor_mutex))
+        return -ERESTARTSYS;
+
     /* 
      * STEP 1: Capture 64-bit kernel timer jiffies for high-precision
      * monotonic timestamping (unaffected by wall-clock time shifts).
@@ -105,11 +128,17 @@ static ssize_t sensor_read(struct file *file, char __user *buf, size_t count, lo
     get_random_bytes(&rand_temp, sizeof(rand_temp));
     get_random_bytes(&rand_press, sizeof(rand_press));
 
-    /* Simulated Range: 20000 mC to 35000 mC (20.00°C to 35.00°C) */
-    data.temperature_mC = 20000 + (s32)(rand_temp % 15001);
+    /* Simulated Range: 20000 mC to 35000 mC + user-configured calibration offset */
+    data.temperature_mC = 20000 + (s32)(rand_temp % 15001) + temp_calib_offset_mC;
 
     /* Simulated Range: 98000 Pa to 104000 Pa (980.00 hPa to 1040.00 hPa) */
     data.pressure_Pa = 98000 + (rand_press % 6001);
+
+    /* Update internal driver telemetry read counter */
+    total_read_count++;
+
+    /* Release lock prior to copy_to_user to prevent holding lock during page faults */
+    mutex_unlock(&sensor_mutex);
 
     /* 
      * STEP 3: Safe kernel-to-user memory copy.
@@ -123,11 +152,57 @@ static ssize_t sensor_read(struct file *file, char __user *buf, size_t count, lo
     return sizeof(data);
 }
 
+/*
+ * ============================================================================
+ * SENSOR IOCTL: Hardware configuration and runtime telemetry diagnostics
+ * ============================================================================
+ */
+static long sensor_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+{
+    int ret = 0;
+    u32 count_val;
+    s32 calib_val;
+
+    if (mutex_lock_interruptible(&sensor_mutex))
+        return -ERESTARTSYS;
+
+    switch (cmd) {
+    case BHARATH_SENSOR_IOCTL_RESET_STATS:
+        total_read_count = 0;
+        pr_info("sensor_kmod: Telemetry read statistics reset via ioctl\n");
+        break;
+
+    case BHARATH_SENSOR_IOCTL_GET_READINGS:
+        count_val = total_read_count;
+        if (copy_to_user((u32 __user *)arg, &count_val, sizeof(count_val)))
+            ret = -EFAULT;
+        break;
+
+    case BHARATH_SENSOR_IOCTL_SET_CALIB:
+        if (copy_from_user(&calib_val, (s32 __user *)arg, sizeof(calib_val))) {
+            ret = -EFAULT;
+            break;
+        }
+        temp_calib_offset_mC = calib_val;
+        pr_info("sensor_kmod: Temperature calibration offset set to %d mC via ioctl\n", temp_calib_offset_mC);
+        break;
+
+    default:
+        pr_warn("sensor_kmod: Unknown ioctl command 0x%x\n", cmd);
+        ret = -ENOTTY; /* Standard POSIX return for unsupported ioctl */
+        break;
+    }
+
+    mutex_unlock(&sensor_mutex);
+    return ret;
+}
+
 static const struct file_operations sensor_fops = {
-    .owner   = THIS_MODULE,
-    .open    = sensor_open,
-    .release = sensor_release,
-    .read    = sensor_read,
+    .owner          = THIS_MODULE,
+    .open           = sensor_open,
+    .release        = sensor_release,
+    .read           = sensor_read,
+    .unlocked_ioctl = sensor_ioctl,
 };
 
 static char *sensor_devnode(const struct device *dev, umode_t *mode)

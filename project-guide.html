@@ -151,12 +151,12 @@ This project demonstrates the complete end-to-end design, implementation, and cr
     <tr>
       <td><strong>Kernel Driver</strong></td>
       <td><code>sensor_kmod</code> (6.6)</td>
-      <td>Exposes <code>/dev/bharath_sensor</code>; streams 64-bit jiffies, temp (m°C), and pressure (Pa).</td>
+      <td>Exposes <code>/dev/bharath_sensor</code>; thread-safe mutex locking, ioctl configuration, and atomic telemetry streaming.</td>
     </tr>
     <tr>
       <td><strong>User-space App</strong></td>
       <td><code>sensor-simulator</code></td>
-      <td>Reads binary struct from <code>/dev/bharath_sensor</code> and computes Fletcher-16 checksums.</td>
+      <td>Reads binary struct from <code>/dev/bharath_sensor</code>, tests ioctl calibration, and computes Fletcher-16 checksums.</td>
     </tr>
     <tr>
       <td><strong>Network Suite</strong></td>
@@ -182,10 +182,16 @@ This project demonstrates the complete end-to-end design, implementation, and cr
 <p>
 The kernel module (<code>sensor_kmod.c</code>) registers a dynamic major number with <code>alloc_chrdev_region()</code> and uses modern Linux 6.4+ API <code>class_create("bharath_class")</code> to automatically instantiate <code>/dev/bharath_sensor</code> via <code>eudev</code>.
 </p>
+<p>
+<strong>Concurrency &amp; Mutex Locking:</strong> To guarantee thread safety across concurrent readers, critical sections are guarded by <code>mutex_lock_interruptible(&amp;sensor_mutex)</code>, safely releasing before <code>copy_to_user()</code> to prevent holding locks across potential page faults.
+</p>
+<p>
+<strong>IOCTL Interface:</strong> Supports <code>_IO</code>, <code>_IOR</code>, and <code>_IOW</code> ioctls to reset driver telemetry statistics, read total frames served, and apply runtime hardware temperature calibration offsets.
+</p>
 <p>When user space reads the device node, the driver packs hardware telemetry and safely transfers it to user space via <code>copy_to_user()</code>:</p>
 <pre><code>struct bharath_sensor_data {
     u64 timestamp_jiffies; /* get_jiffies_64() */
-    s32 temperature_mC;    /* 20000 mC to 35000 mC */
+    s32 temperature_mC;    /* 20000 mC to 35000 mC + ioctl calibration */
     u32 pressure_Pa;       /* 98000 Pa to 104000 Pa */
 } __attribute__((packed));</code></pre>
 
@@ -323,7 +329,7 @@ devtool deploy-target sensor-simulator root@192.168.7.2
 devtool finish sensor-simulator meta-bharath</code></pre>
 
 <h2>8. Reclaiming 50+ GB on Your Laptop (Optional)</h2>
-<p>Once your release binaries are backed up in <code>C:\Users\devad\Downloads\yocto-custom-image\release-artifacts</code>, reclaim your disk space:</p>
+<p>Once your release binaries are backed up in <code>release-artifacts/</code>, you can reclaim your disk space:</p>
 
 <ol>
   <li><strong>Clean Build Cache in Ubuntu:</strong>
@@ -334,7 +340,7 @@ sudo fstrim -av</code></pre>
     <pre><code>wsl --shutdown
 diskpart</code></pre>
     <p>Inside <code>DISKPART&gt;</code>:</p>
-    <pre><code>select vdisk file="C:\Users\devad\AppData\Local\wsl\{6e45fa15-718f-4712-ac74-a32d3e3ecc4b}\ext4.vhdx"
+    <pre><code>select vdisk file="&lt;path-to-your-wsl-ext4.vhdx&gt;"
 attach vdisk readonly
 compact vdisk
 detach vdisk

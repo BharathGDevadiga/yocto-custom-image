@@ -216,9 +216,11 @@ poweroff
 ## Technical Architecture & Implementation
 
 ### 1. `sensor_kmod` (Linux 6.6 Kernel Driver)
-* **Subsystem:** Linux Character Device Subsystem.
+* **Subsystem:** Linux Character Device Subsystem (`cdev`, `fops`).
 * **Compatibility:** Linux 6.6 / modern kernel APIs (`class_create(name)` single-argument form introduced in Linux 6.4).
-* **Data Transmission:** When user space reads `/dev/bharath_sensor`, the driver allocates a packed binary struct (`bharath_sensor_data`), samples `get_jiffies_64()`, draws hardware entropy with `get_random_bytes()`, and performs safe atomic user memory transfer with `copy_to_user()`.
+* **Concurrency & Synchronization:** Thread-safe execution across concurrent user-space readers guarded by kernel mutex locking (`mutex_lock_interruptible(&sensor_mutex)`), protecting shared state while allowing clean signal interruptions.
+* **IOCTL Subsystem:** Implements `unlocked_ioctl` supporting hardware configuration and diagnostics (`_IO`, `_IOR`, `_IOW`), including runtime temperature calibration offsets and kernel read telemetry statistics.
+* **Data Transmission:** When user space reads `/dev/bharath_sensor`, the driver allocates a packed binary struct (`bharath_sensor_data`), samples `get_jiffies_64()`, draws hardware entropy with `get_random_bytes()`, applies active calibration offsets, and performs safe atomic user memory transfer with `copy_to_user()`.
 * **Autoloading:** Packaged with `KERNEL_MODULE_AUTOLOAD += "sensor_kmod"` and `RPROVIDES:${PN} += "kernel-module-sensor-kmod"` so systemd/eudev automatically loads the `.ko` during early boot.
 
 ### 2. `sensor-simulator` (User-Space Telemetry Client)
@@ -372,9 +374,18 @@ bitbake-layers show-recipes "sensor*"
 
 ---
 
-## Resume Bullet Point
+## High-Impact Resume Bullet Points
 
-> *"Architected a custom embedded Linux distribution using the Yocto Project (Poky Scarthgap 5.0) targeting QEMU x86-64; developed an out-of-tree Linux 6.6 kernel character device driver (`/dev/bharath_sensor`) with dynamic node generation and automated module autoloading; authored C user-space telemetry services with Fletcher-16 integrity validation and a POSIX TCP/UDP socket networking suite in the custom `meta-bharath` layer."*
+### Option 1: Full-Stack Embedded Linux / BSP Role (Recommended)
+> **Embedded Linux & Kernel Driver Engineer | Custom Yocto BSP Distribution**
+> * Engineered an out-of-tree **Linux 6.6 character device driver** (`/dev/bharath_sensor`) featuring thread-safe concurrency via **interruptible mutex locking**, dynamic major/minor allocation, Linux 6.4+ single-argument `class_create()`, and an **`ioctl` subsystem** for runtime calibration and telemetry diagnostics.
+> * Architected a modular **Yocto Project (Poky Scarthgap 5.0 LTS)** BSP layer (`meta-bharath`) cross-compiling over 6,050 tasks targeting QEMU x86-64, configuring `eudev` automated devnode creation and kernel module autoloading.
+> * Authored an embedded user-space C telemetry daemon implementing **Fletcher-16 checksum integrity validation** over raw binary payloads alongside a POSIX TCP/UDP socket communication suite for network IPC verification.
+> * Automated standalone QEMU deployment workflows enabling instant (<5 second) OS execution from pre-built GitHub Release artifacts without requiring multi-hour BitBake rebuilds.
+
+### Option 2: Concise 2-Bullet Format
+> * **Custom Yocto Embedded Linux Distribution (Poky Scarthgap / Linux 6.6):** Developed custom BSP layer `meta-bharath` cross-compiling a minimal headless distribution for QEMU x86-64 with automated devnode generation and network IPC testing.
+> * **Linux Kernel Character Driver & Telemetry Daemon:** Authored an out-of-tree Linux 6.6 character driver with `mutex` synchronization, `ioctl` hardware control, atomic `copy_to_user()` transfers, and a user-space C daemon verifying telemetry integrity via Fletcher-16 checksums.
 
 ---
 

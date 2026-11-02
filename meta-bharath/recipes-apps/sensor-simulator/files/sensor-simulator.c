@@ -18,10 +18,17 @@
 #include <string.h>
 #include <time.h>
 #include <errno.h>
+#include <sys/ioctl.h>
 
 #define DEVICE_PATH           "/dev/bharath_sensor"
 #define DEFAULT_INTERVAL_SEC  2
 #define DEFAULT_NUM_READINGS  0   /* 0 = infinite */
+
+/* IOCTL Definitions for Driver Configuration & Control (Matching sensor_kmod.c) */
+#define BHARATH_SENSOR_MAGIC              'B'
+#define BHARATH_SENSOR_IOCTL_RESET_STATS  _IO(BHARATH_SENSOR_MAGIC, 0)
+#define BHARATH_SENSOR_IOCTL_GET_READINGS _IOR(BHARATH_SENSOR_MAGIC, 1, uint32_t)
+#define BHARATH_SENSOR_IOCTL_SET_CALIB    _IOW(BHARATH_SENSOR_MAGIC, 2, int32_t)
 
 /* Binary telemetry struct received directly from kernel driver */
 struct bharath_sensor_data {
@@ -60,6 +67,7 @@ static void print_usage(const char *progname)
     printf("Options:\n");
     printf("  -i SEC    Interval between readings in seconds (default: %d)\n", DEFAULT_INTERVAL_SEC);
     printf("  -n NUM    Number of readings, 0=infinite (default: %d)\n", DEFAULT_NUM_READINGS);
+    printf("  -c CALIB  Temperature calibration offset in m°C via IOCTL (e.g. 500 = +0.5°C)\n");
     printf("  -d DEV    Custom device path (default: %s)\n", DEVICE_PATH);
     printf("  -h        Show this help message\n");
 }
@@ -68,10 +76,12 @@ int main(int argc, char *argv[])
 {
     int interval = DEFAULT_INTERVAL_SEC;
     int num_readings = DEFAULT_NUM_READINGS;
+    int32_t calib_offset = 0;
+    int set_calib = 0;
     const char *dev_path = DEVICE_PATH;
     int opt;
 
-    while ((opt = getopt(argc, argv, "i:n:d:h")) != -1) {
+    while ((opt = getopt(argc, argv, "i:n:c:d:h")) != -1) {
         switch (opt) {
         case 'i':
             interval = atoi(optarg);
@@ -80,6 +90,10 @@ int main(int argc, char *argv[])
         case 'n':
             num_readings = atoi(optarg);
             if (num_readings < 0) num_readings = 0;
+            break;
+        case 'c':
+            calib_offset = (int32_t)atoi(optarg);
+            set_calib = 1;
             break;
         case 'd':
             dev_path = optarg;
@@ -98,16 +112,31 @@ int main(int argc, char *argv[])
 
     printf("=== Bharath Kernel Sensor Reader ===\n");
     printf("Connecting to Character Device: %s\n", dev_path);
-    printf("Interval: %d sec | Readings: %s\n\n",
+    printf("Interval: %d sec | Readings: %s\n",
            interval,
            num_readings == 0 ? "infinite" : "limited");
 
-    int fd = open(dev_path, O_RDONLY);
+    int fd = open(dev_path, O_RDWR);
+    if (fd < 0) {
+        /* Fall back to O_RDONLY if permissions restrict write */
+        fd = open(dev_path, O_RDONLY);
+    }
     if (fd < 0) {
         fprintf(stderr, "Error: Cannot open %s: %s\n", dev_path, strerror(errno));
         fprintf(stderr, "Check if the sensor_kmod kernel module is loaded: 'lsmod | grep sensor_kmod'\n");
         return 1;
     }
+
+    /* Configure driver calibration offset via IOCTL if specified */
+    if (set_calib) {
+        if (ioctl(fd, BHARATH_SENSOR_IOCTL_SET_CALIB, &calib_offset) == 0) {
+            printf("Hardware Calibration Offset Configured: %+d m°C (%+.2f°C) [IOCTL SET_CALIB]\n",
+                   calib_offset, calib_offset / 1000.0f);
+        } else {
+            fprintf(stderr, "Notice: IOCTL SET_CALIB unsupported or permission denied: %s\n", strerror(errno));
+        }
+    }
+    printf("\n");
 
     int count = 0;
     while (running) {
@@ -176,6 +205,11 @@ int main(int argc, char *argv[])
             break;
 
         sleep(interval);
+    }
+
+    uint32_t lifetime_reads = 0;
+    if (ioctl(fd, BHARATH_SENSOR_IOCTL_GET_READINGS, &lifetime_reads) == 0) {
+        printf("[IOCTL GET_READINGS] Kernel Driver Lifetime Telemetry Frames Served: %u\n", lifetime_reads);
     }
 
     close(fd);
