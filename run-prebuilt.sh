@@ -47,9 +47,11 @@ echo "=========================================================="
 qemu-system-x86_64 \
     -kernel "${KERNEL}" \
     -drive file="${ROOTFS}",if=virtio,format=raw \
-    -append "root=/dev/vda rw console=ttyS0 quiet" \
-    -cpu qemu64 \
-    -machine q35 \
-    -smp 2 \
+    -append "root=/dev/vda rw console=ttyS0 console=ttyS1 quiet" \
+    -cpu IvyBridge,-x2apic,-tsc-deadline \
+    -machine q35,i8042=off \
+    -smp 4 \
     -m 256 \
+    -serial mon:stdio \
+    -serial null \
     -nographic
