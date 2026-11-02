@@ -265,7 +265,64 @@ This initiates an ACPI shutdown sequence: services are stopped, disk filesystems
   </li>
 </ol>
 
-<h2>6. Reclaiming 50+ GB on Your Laptop (Optional)</h2>
+<h2>6. Adapting for Real Hardware & Physical Sensors</h2>
+<p>
+This project is architected as an extensible BSP framework. To adapt this system from QEMU simulation to physical silicon (e.g., Raspberry Pi, BeagleBone, NXP i.MX, or STM32MP1):
+</p>
+
+<h3>A. In the Kernel Driver (<code>sensor_kmod.c</code>)</h3>
+<p>Open <code>meta-bharath/recipes-kernel/sensor-kmod/files/sensor_kmod.c</code> and modify <code>sensor_read()</code>:</p>
+<pre><code>// 1. For I2C Sensors (e.g. BMP280, BME680, MPU6050):
+#include &lt;linux/i2c.h&gt;
+// Replace random entropy with I2C bus transactions:
+s32 raw_temp = i2c_smbus_read_word_data(client, BMP280_TEMP_REG);
+data.temperature_mC = bmp280_compensate_temperature(raw_temp);
+
+// 2. For SPI Sensors:
+#include &lt;linux/spi/spi.h&gt;
+spi_sync_transfer(spi_device, &amp;transfer, 1);</code></pre>
+
+<h3>B. Device Tree Binding (<code>.dts</code>)</h3>
+<p>In physical hardware, bind your driver to the board's Device Tree:</p>
+<pre><code>&amp;i2c1 {
+    status = "okay";
+    bharath_sensor@76 {
+        compatible = "bharath,sensor-v1";
+        reg = &lt;0x76&gt;;
+    };
+};</code></pre>
+
+<h3>C. User-Space Extensions (<code>sensor-simulator.c</code>)</h3>
+<p>Pipe telemetry from <code>/dev/bharath_sensor</code> into:</p>
+<ul>
+  <li><strong>Automotive CAN Bus:</strong> Forward frames to <code>can0</code> via Linux <code>SocketCAN</code>.</li>
+  <li><strong>Cloud IoT:</strong> Publish JSON telemetry payloads to MQTT brokers (AWS IoT Core / ThingsBoard).</li>
+  <li><strong>IPC Networking:</strong> Stream over TCP/UDP sockets using the bundled <code>netcomm</code> package.</li>
+</ul>
+
+<h2>7. Official Yocto Lifecycle &amp; <code>devtool</code> Workflow</h2>
+<p>
+BitBake processes every recipe through a deterministic task pipeline:
+</p>
+<p>
+<code>do_fetch</code> &rarr; <code>do_unpack</code> &rarr; <code>do_patch</code> &rarr; <code>do_configure</code> &rarr; <code>do_compile</code> &rarr; <code>do_install</code> &rarr; <code>do_package</code> &rarr; <code>do_rootfs</code>
+</p>
+
+<h3>Iterative Development with <code>devtool</code></h3>
+<p>Instead of rebuilding the entire image when editing code, use the official Yocto <code>devtool</code> workflow:</p>
+<pre><code># 1. Extract recipe source into an active workspace:
+devtool modify sensor-simulator
+
+# 2. Fast incremental compilation (takes 2 seconds):
+devtool build sensor-simulator
+
+# 3. Live deployment to running QEMU target over network:
+devtool deploy-target sensor-simulator root@192.168.7.2
+
+# 4. Commit verified changes back into the recipe as a patch:
+devtool finish sensor-simulator meta-bharath</code></pre>
+
+<h2>8. Reclaiming 50+ GB on Your Laptop (Optional)</h2>
 <p>Once your release binaries are backed up in <code>C:\Users\devad\Downloads\yocto-custom-image\release-artifacts</code>, reclaim your disk space:</p>
 
 <ol>
