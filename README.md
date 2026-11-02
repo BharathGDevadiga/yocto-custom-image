@@ -9,6 +9,8 @@ A complete, production-grade Yocto Project build creating an embedded Linux dist
 3. **`netcomm`** — POSIX TCP and UDP client-server networking suite validating kernel network stack and IPC functionality.
 4. **`bharath-image`** — Tailored embedded Linux rootfs image with dropbear SSH, networking utilities, and automated module autoloading.
 
+![System Architecture Flowchart](docs/images/system-architecture-flowchart.png)
+
 ---
 
 ## ⚡ Quick Run (Instant Play without 60 GB Yocto Build)
@@ -166,6 +168,8 @@ Log in when prompted:
 qemux86-64 login: root
 ```
 *(No password needed)*
+
+![QEMU Runtime Verification](docs/images/qemu-runtime-verification.png)
 
 ### 1. Verify Kernel Module Autoloading
 ```bash
