@@ -5,5 +5,5 @@ echo  Launching Bharath Custom Embedded Linux via QEMU...
 echo  To exit cleanly: type 'poweroff' inside the Linux shell
 echo ========================================================
 echo.
-wsl -e bash -c "cd /mnt/c/Users/devad/Downloads/yocto-custom-image && ./run-prebuilt.sh"
+wsl --cd "%~dp0." ./run-prebuilt.sh
 pause

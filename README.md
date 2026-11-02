@@ -21,20 +21,29 @@ You can run the pre-built Linux kernel (`bzImage`) and root filesystem (`bharath
 Download `bzImage` and `bharath-image-qemux86-64.rootfs.ext4` from the **[GitHub Releases (v1.0.0)](https://github.com/BharathGDevadiga/yocto-custom-image/releases/tag/v1.0.0)** page.
 
 ### 2. Boot in QEMU with a Single Command
+
+#### On Linux or WSL:
 ```bash
-# Option A: Using the automated helper script
+# Automated helper script
 chmod +x run-prebuilt.sh
 ./run-prebuilt.sh
+```
 
-# Option B: Direct QEMU invocation (Linux / macOS / WSL)
+#### On Windows:
+Double-click **`run-prebuilt-windows.bat`** in File Explorer (or run it from PowerShell/CMD).
+
+#### Manual Direct QEMU Invocation:
+```bash
 qemu-system-x86_64 \
     -kernel bzImage \
     -drive file=bharath-image-qemux86-64.rootfs.ext4,if=virtio,format=raw \
-    -append "root=/dev/vda rw console=ttyS0 quiet" \
-    -cpu IvyBridge \
-    -machine q35 \
-    -smp 2 \
+    -append "root=/dev/vda rw console=ttyS0 console=ttyS1 quiet" \
+    -cpu IvyBridge,-x2apic,-tsc-deadline \
+    -machine q35,i8042=off \
+    -smp 4 \
     -m 256 \
+    -serial mon:stdio \
+    -serial null \
     -nographic
 ```
 

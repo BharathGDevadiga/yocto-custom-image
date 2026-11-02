@@ -203,7 +203,17 @@ The application (<code>sensor-simulator.c</code>) opens <code>/dev/bharath_senso
 
 <h2>3. Running & Verifying in QEMU</h2>
 
-<p>To boot the compiled image headlessly in your Ubuntu terminal:</p>
+<h3>Method A: Instant Standalone Launch (No Yocto / Poky Required)</h3>
+<p>If running from the pre-built GitHub Release artifacts (<code>bzImage</code> and rootfs <code>.ext4</code>):</p>
+<pre><code># On Linux or WSL:
+chmod +x run-prebuilt.sh
+./run-prebuilt.sh
+
+# On Windows:
+Double-click run-prebuilt-windows.bat</code></pre>
+
+<h3>Method B: Launching via Poky Build Environment</h3>
+<p>To boot the compiled image headlessly from the full Yocto build directory:</p>
 <pre><code>cd ~/poky
 source oe-init-build-env build
 runqemu nographic</code></pre>
