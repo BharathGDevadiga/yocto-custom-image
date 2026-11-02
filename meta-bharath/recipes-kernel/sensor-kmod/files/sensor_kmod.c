@@ -45,6 +45,41 @@ static int sensor_release(struct inode *inode, struct file *file)
     return 0;
 }
 
+/*
+ * ============================================================================
+ * SENSOR READ: Transfer telemetry from kernel to user space
+ * ============================================================================
+ * HOW TO ADAPT THIS FUNCTION FOR REAL HARDWARE (I2C / SPI / ADC / IIO):
+ *
+ * Currently, for headless QEMU emulation, this driver synthesizes realistic
+ * environmental data using 64-bit kernel jiffies and hardware entropy.
+ *
+ * To connect a physical sensor on a real target board (e.g. Raspberry Pi,
+ * BeagleBone, NXP i.MX, STM32MP1, or x86 SBC):
+ *
+ * 1. FOR REAL I2C SENSORS (e.g., Bosch BMP280, BME680, MPU6050):
+ *    - Include <linux/i2c.h>
+ *    - Store the `struct i2c_client *client` from your i2c_driver probe().
+ *    - Read raw registers:
+ *        s32 raw_t = i2c_smbus_read_word_data(client, BMP280_TEMP_REG);
+ *        s32 raw_p = i2c_smbus_read_word_data(client, BMP280_PRESS_REG);
+ *    - Convert and assign to:
+ *        data.temperature_mC = bmp280_compensate_temp(raw_t);
+ *        data.pressure_Pa    = bmp280_compensate_press(raw_p);
+ *
+ * 2. FOR REAL SPI SENSORS:
+ *    - Include <linux/spi/spi.h>
+ *    - Use spi_sync_transfer(spi_dev, &transfer, 1) to read ADC registers.
+ *
+ * 3. FOR DEVICE TREE MATCHING:
+ *    - Define an `of_device_id` table:
+ *        static const struct of_device_id sensor_dt_ids[] = {
+ *            { .compatible = "bharath,sensor-v1" },
+ *            { /* sentinel */ }
+ *        };
+ *        MODULE_DEVICE_TABLE(of, sensor_dt_ids);
+ * ============================================================================
+ */
 static ssize_t sensor_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 {
     struct bharath_sensor_data data;
@@ -56,20 +91,30 @@ static ssize_t sensor_read(struct file *file, char __user *buf, size_t count, lo
         return -EINVAL;
     }
 
-    /* Populate 64-bit kernel jiffies timer */
+    /* 
+     * STEP 1: Capture 64-bit kernel timer jiffies for high-precision
+     * monotonic timestamping (unaffected by wall-clock time shifts).
+     */
     data.timestamp_jiffies = get_jiffies_64();
 
-    /* Generate simulated hardware sensor telemetry using kernel entropy */
+    /* 
+     * STEP 2: Acquire telemetry data.
+     * [CHANGE POINT FOR REAL SENSORS]: Replace the mock generator below
+     * with your physical I2C/SPI bus read calls.
+     */
     get_random_bytes(&rand_temp, sizeof(rand_temp));
     get_random_bytes(&rand_press, sizeof(rand_press));
 
-    /* Range: 20000 mC to 35000 mC (20.00°C to 35.00°C) */
+    /* Simulated Range: 20000 mC to 35000 mC (20.00°C to 35.00°C) */
     data.temperature_mC = 20000 + (s32)(rand_temp % 15001);
 
-    /* Range: 98000 Pa to 104000 Pa (980.00 hPa to 1040.00 hPa) */
+    /* Simulated Range: 98000 Pa to 104000 Pa (980.00 hPa to 1040.00 hPa) */
     data.pressure_Pa = 98000 + (rand_press % 6001);
 
-    /* Copy packed binary struct to user space */
+    /* 
+     * STEP 3: Safe kernel-to-user memory copy.
+     * copy_to_user ensures atomic transfer and memory boundary safety.
+     */
     if (copy_to_user(buf, &data, sizeof(data))) {
         pr_err("sensor_kmod: Failed to copy sensor data to user space\n");
         return -EFAULT;

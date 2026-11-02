@@ -142,6 +142,33 @@ int main(int argc, char *argv[])
                press_hpa, data.pressure_Pa,
                checksum);
 
+        /*
+         * ====================================================================
+         * EXTENSION POINT: PIPING VALIDATED TELEMETRY TO REAL-WORLD INTERFACES
+         * ====================================================================
+         * Once the Fletcher-16 checksum confirms frame integrity, this data
+         * can be routed to downstream embedded communication layers:
+         *
+         * 1. AUTOMOTIVE CAN BUS (SocketCAN):
+         *    struct can_frame frame;
+         *    frame.can_id = 0x123;
+         *    frame.can_dlc = 8;
+         *    memcpy(frame.data, &data.temperature_mC, 4);
+         *    memcpy(&frame.data[4], &data.pressure_Pa, 4);
+         *    write(can_socket_fd, &frame, sizeof(frame));
+         *
+         * 2. CLOUD IoT / EDGE BROKER (MQTT via libmosquitto):
+         *    char payload[128];
+         *    snprintf(payload, sizeof(payload),
+         *             "{\"temp_c\": %.2f, \"press_hpa\": %.2f, \"jiffies\": %llu}",
+         *             temp_c, press_hpa, (unsigned long long)data.timestamp_jiffies);
+         *    mosquitto_publish(mosq, NULL, "sensors/telemetry", strlen(payload), payload, 0, false);
+         *
+         * 3. NETWORK STREAMING (POSIX Sockets):
+         *    Forward over TCP/UDP using the included netcomm suite (netcomm-tcp-client).
+         * ====================================================================
+         */
+
         fflush(stdout);
         count++;
 
